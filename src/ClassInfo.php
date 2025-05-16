@@ -8,9 +8,13 @@ use Throwable;
 use ArgumentCountError;
 use ReflectionAttribute;
 use Stringable;
+use ValueError;
 
 final readonly class ClassInfo implements Stringable
 {
+    /** @var ReflectionClass<object> */
+    private ReflectionClass $reflection;
+
     public bool $exists;
 
     /**
@@ -26,6 +30,28 @@ final readonly class ClassInfo implements Stringable
         public string $file,
     ) {
         $this->exists = \class_exists( $className, false );
+    }
+
+    public static function from( string|object $class ) : self
+    {
+        $className = \is_object( $class ) ? $class::class : $class;
+        $exploded  = \explode( '\\', $className );
+        $basename  = \array_pop( $exploded );
+        $namespace = \implode( '\\', $exploded );
+
+        \assert( \class_exists( $className ) );
+
+        try {
+            $file = ( new ReflectionClass( $className ) )->getFileName();
+            if ( ! $file ) {
+                throw new ValueError( 'Variable $file is empty.' );
+            }
+        }
+        catch ( Throwable $exception ) {
+            throw new RuntimeException( 'Unable to load class: '.$exception->getMessage() );
+        }
+
+        return new ClassInfo( $className, $basename, $namespace, $file );
     }
 
     /**
@@ -54,7 +80,7 @@ final readonly class ClassInfo implements Stringable
     public function reflect() : ReflectionClass
     {
         try {
-            return new ReflectionClass( $this->className );
+            return $this->reflection ??= new ReflectionClass( $this->className );
         }
         catch ( Throwable $e ) {
             throw new RuntimeException( 'ReflectionException: '.$e->getMessage() );
@@ -76,28 +102,24 @@ final readonly class ClassInfo implements Stringable
         );
     }
 
+    public function hasAttribute( string $instanceOf ) : bool
+    {
+        return ! empty( $this->reflect()->getAttributes( $instanceOf ) );
+    }
+
     /**
      * Retrieve a single {@see \Attribute}.
      *
      * @template T of object
      *
-     * @param class-string|object $class
-     * @param class-string<T>     $attribute
+     * @param class-string<T> $attribute
      *
      * @return null|T
      */
-    public static function getAttribute(
-        object|string $class,
-        string        $attribute,
+    public function getAttribute(
+        string $attribute,
     ) : mixed {
-        try {
-            $reflector = new ReflectionClass( $class );
-        }
-        catch ( Throwable $e ) {
-            throw new RuntimeException( 'ReflectionException: '.$e->getMessage() );
-        }
-
-        $attributes = $reflector->getAttributes( $attribute );
+        $attributes = $this->getAttributes( $attribute );
 
         if ( empty( $attributes ) ) {
             return null;
