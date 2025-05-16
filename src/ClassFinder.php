@@ -33,12 +33,12 @@ final class ClassFinder implements Countable, IteratorAggregate
     protected ?bool $requireAllAttributes = null;
 
     /**
-     * @param string|string[]|Stringable|Stringable[] $directories
+     * @param string|Stringable ...$directories
      *
      * @return static
      */
     public static function scan(
-        string|Stringable|array $directories,
+        string|Stringable ...$directories,
     ) : static {
         $finder = new self();
 
