@@ -109,4 +109,33 @@ final readonly class ClassInfo implements Stringable
 
         return $attributes[0]->newInstance();
     }
+
+    /**
+     * # Get the class name of a provided class, or the calling class.
+     *
+     * - Will use the `debug_backtrace()` to get the calling class if no `$class` is provided.
+     *
+     * ```
+     * $class = new \Northrook\Core\Env();
+     * classBasename( $class );
+     * // => 'Env'
+     * ```
+     *
+     * @param class-string|object|string $class
+     * @param ?callable-string           $filter {@see \strtolower} by default
+     *
+     * @return string
+     */
+    public static function basename( string|object $class, ?string $filter = 'strtolower' ) : string
+    {
+        $className  = \is_object( $class ) ? $class::class : $class;
+        $namespaced = \explode( '\\', $className );
+        $basename   = \end( $namespaced );
+
+        if ( \is_callable( $filter ) ) {
+            return $filter( $basename );
+        }
+
+        return $basename;
+    }
 }

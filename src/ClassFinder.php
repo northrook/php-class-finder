@@ -81,7 +81,7 @@ final class ClassFinder implements Countable, IteratorAggregate
 
         foreach ( (array) $attribute as $className ) {
             if ( \class_exists( $className ) ) {
-                $this->withAttributes[$className] = $this::basename( $className );
+                $this->withAttributes[$className] = ClassInfo::basename( $className );
             }
             else {
                 throw new InvalidArgumentException( 'Attribute Class '.$className.' does not exist' );
@@ -280,34 +280,5 @@ final class ClassFinder implements Countable, IteratorAggregate
         }
 
         return $found;
-    }
-
-    /**
-     * # Get the class name of a provided class, or the calling class.
-     *
-     * - Will use the `debug_backtrace()` to get the calling class if no `$class` is provided.
-     *
-     * ```
-     * $class = new \Northrook\Core\Env();
-     * classBasename( $class );
-     * // => 'Env'
-     * ```
-     *
-     * @param class-string|object|string $class
-     * @param ?callable-string           $filter {@see \strtolower} by default
-     *
-     * @return string
-     */
-    public static function basename( string|object $class, ?string $filter = 'strtolower' ) : string
-    {
-        $className  = \is_object( $class ) ? $class::class : $class;
-        $namespaced = \explode( '\\', $className );
-        $basename   = \end( $namespaced );
-
-        if ( \is_callable( $filter ) ) {
-            return $filter( $basename );
-        }
-
-        return $basename;
     }
 }
