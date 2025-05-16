@@ -1,0 +1,30 @@
+{
+  "name": "northrook/php-class-finder",
+  "description": "Find fully qualified classes from files.",
+  "type": "library",
+  "license": "BSD-3-Clause",
+  "authors": [
+    {
+      "name": "Martin Nielsen",
+      "email": "mn@northrook.com",
+      "role": "Developer"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "Support\\": "src"
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "require": {
+    "php": ">=8.2"
+  },
+  "require-dev": {
+    "northrook/php-cs": "@dev",
+    "tracy/tracy": "^2.10"
+  },
+  "scripts": {
+    "phpstan": "vendor/bin/phpstan analyse src"
+  }
+}
