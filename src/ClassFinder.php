@@ -124,6 +124,14 @@ final class ClassFinder implements Countable, IteratorAggregate
     }
 
     /**
+     * @return array<string, ClassInfo>
+     */
+    public function getArray() : array
+    {
+        return $this->scanFiles()->found;
+    }
+
+    /**
      * @return Traversable<string, ClassInfo>
      */
     public function getIterator() : Traversable
