@@ -2,283 +2,104 @@
 
 declare(strict_types=1);
 
-namespace Support;
+namespace Northrook;
 
-use Countable;
-use IteratorAggregate;
-use Stringable;
-use SplFileInfo;
-use Traversable;
-use ArrayIterator;
-use FilesystemIterator;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use RuntimeException;
+use Northrook\ClassFinder\ClassScan;
 use InvalidArgumentException;
+use Stringable;
 
 /**
- * @implements \IteratorAggregate<string, ClassInfo>
+ * Discovers PSR-4 classes under a project root directory.
+ *
+ * Configure the root path and namespace exclusions.
+ *
+ * Call {@see scanDirectories()} to produce a {@see ClassScan} result.
  */
-final class ClassFinder implements Countable, IteratorAggregate
+final class ClassFinder
 {
-    /** @var array<string, ClassInfo> `[hashPath => ClassInfo]` */
-    private array $found = [];
+    /** @var string[] */
+    private array $excludeNamespaces;
 
-    /** @var array<string, bool> `[filePath => recursive]` */
-    protected array $scan = [];
+    /** The most recent result of {@see scanDirectories()}, if any. */
+    public private(set) ?ClassScan $lastScan = null;
 
-    /** @var array<class-string, string> `[className => basename]` */
-    protected array $withAttributes = [];
-
-    protected ?bool $requireAllAttributes = null;
+    /** Absolute, normalized path passed to the constructor. */
+    public readonly string $rootDirectory;
 
     /**
-     * @param string|Stringable ...$directories
-     *
-     * @return static
+     * @param string   $rootDirectory     absolute path to the project root
+     * @param string[] $excludeNamespaces namespaces omitted from scan results
      */
-    public static function scan(
-        string|Stringable ...$directories,
-    ) : static {
-        $finder = new self();
+    public function __construct(
+        string $rootDirectory,
+        array  $excludeNamespaces = ['Composer'],
+    ) {
+        $this->rootDirectory     = self::normalizePath( $rootDirectory );
+        $this->excludeNamespaces = $excludeNamespaces;
 
-        foreach ( (array) $directories as $directory ) {
-            $path = (string) $directory;
-            $finder->inDirectory( $path, ! \str_ends_with( $path, '^' ) );
-        }
-
-        return $finder;
-    }
-
-    /**
-     * @param string|Stringable $path
-     * @param null|bool         $recursive
-     *
-     * @return $this
-     */
-    public function inDirectory(
-        string|Stringable $path,
-        ?bool             $recursive = null,
-    ) : self {
-        $path = (string) $path;
-        $recursive ??= ! \str_ends_with( $path, '^' );
-        $this->scan[$path] = $recursive;
-
-        return $this;
-    }
-
-    /**
-     * @param class-string[] $attribute
-     * @param bool           $requireAll
-     *
-     * @return self
-     */
-    public function withAttribute(
-        string|array $attribute,
-        bool         $requireAll = false,
-    ) : self {
-        $this->requireAllAttributes ??= $requireAll;
-
-        foreach ( (array) $attribute as $className ) {
-            if ( \class_exists( $className ) ) {
-                $this->withAttributes[$className] = ClassInfo::basename( $className );
-            }
-            else {
-                throw new InvalidArgumentException( 'Attribute Class '.$className.' does not exist' );
-            }
-        }
-        return $this;
-    }
-
-    /**
-     * @return $this
-     */
-    public function scanFiles() : self
-    {
-        foreach ( $this->scan as $path => $recursive ) {
-            $this->parseFiles( ...$this->scanDirectories( $path, $recursive ) );
-        }
-        return $this;
-    }
-
-    /**
-     * @param SplFileInfo ...$files
-     *
-     * @return $this
-     */
-    public function parseFiles( SplFileInfo ...$files ) : self
-    {
-        foreach ( $files as $file ) {
-            $this->parseDiscoveredFile( $file );
-        }
-
-        return $this;
-    }
-
-    /**
-     * @return int
-     */
-    public function count() : int
-    {
-        return \count( $this->found );
-    }
-
-    /**
-     * @return array<string, ClassInfo>
-     */
-    public function getArray() : array
-    {
-        return $this->scanFiles()->found;
-    }
-
-    /**
-     * @return Traversable<string, ClassInfo>
-     */
-    public function getIterator() : Traversable
-    {
-        return new ArrayIterator( $this->scanFiles()->found );
-    }
-
-    private function parseDiscoveredFile( SplFileInfo $path ) : void
-    {
-        $filePath  = $this->normalPath( $path );
-        $basename  = null;
-        $namespace = null;
-
-        $read = \fopen( $filePath, 'r' )
-                ?: throw new RuntimeException( "Unable to open file {$filePath}" );
-
-        while ( false !== ( $line = \fgets( $read ) ) ) {
-            $this->normalizeLine( $line );
-
-            if ( $namespace === null && \str_starts_with( $line, 'namespace ' ) ) {
-                // Remove `namespace ` using offset 10, and trailing `;` with -1.
-                $namespace = \trim( \substr( $line, 10, -1 ) );
-            }
-
-            if ( $this->lineContainsDefinition( $line, $basename ) ) {
-                break;
-            }
-        }
-
-        \fclose( $read );
-
-        if ( ! $basename ) {
-            return;
-        }
-
-        $className = $namespace ? $namespace.'\\'.$basename : $basename;
-        $namespace ??= '';
-
-        if ( ! \class_exists( $className ) ) {
-            return;
-        }
-
-        $hashedPath = \hash( 'xxh64', $filePath );
-
-        $this->found[$hashedPath] ??= new ClassInfo(
-            $className,
-            $basename,
-            $namespace,
-            $filePath,
-        );
-    }
-
-    private function normalPath( SplFileInfo $from ) : string
-    {
-        return \strtr( $from->getPathname(), '\\', '/' );
-    }
-
-    private function normalizeLine( string &$line ) : void
-    {
-        $line = \trim(
-            (string) \preg_replace(
-                [
-                    '/\s+/',    // Normalize repeated whitespace,
-                    '/#\[\h*/', // Normalize #[ Attribute lines
-                ],
-                [' ', '#['],
-                $line,
-            ),
-        );
-    }
-
-    private function lineContainsDefinition(
-        string  $line,
-        ?string & $className,
-    ) : bool {
-        $opensWith = \strstr( $line, ' ', true );
-
-        // Skip invalid lines
-        if ( $opensWith === false ) {
-            return false;
-        }
-        // Break early
-        if ( \in_array( $opensWith, ['return', 'exit', 'die'] ) ) {
-            return true;
-        }
-
-        if ( ! \str_contains( $line, 'class ' ) ) {
-            return false;
-        }
-
-        foreach ( [
-            'final class ',
-            'final readonly class ',
-            'abstract class ',
-            'abstract readonly class ',
-            'readonly class ',
-            'class ',
-        ] as $type ) {
-            if ( \str_starts_with( $line, $type ) ) {
-                $classString = \substr( $line, \strlen( $type ) );
-
-                // Update &$className by reference
-                $className = \strstr( $classString, ' ', true ) ?: $classString;
-
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param string|Stringable $path
-     * @param bool              $recursive
-     *
-     * @return SplFileInfo[]
-     */
-    private function scanDirectories(
-        string|Stringable $path,
-        bool              $recursive = true,
-    ) : array {
-        $found = [];
-
-        $directoryIterator = new RecursiveDirectoryIterator(
-            (string) $path,
-            FilesystemIterator::SKIP_DOTS,
-        );
-
-        if ( $recursive ) {
-            $directoryIterator = new RecursiveIteratorIterator(
-                $directoryIterator,
-                RecursiveIteratorIterator::SELF_FIRST,
+        if ( ! \is_dir( $this->rootDirectory ) ) {
+            throw new InvalidArgumentException(
+                $this::class.": provided root directory '{$this->rootDirectory}' does not exist",
             );
         }
+    }
 
-        foreach ( $directoryIterator as $item ) {
-            \assert( $item instanceof SplFileInfo );
+    /**
+     * Replace the list of namespaces excluded from scan results.
+     *
+     * - Matches the namespace itself or any class beneath it.
+     * - Passing no arguments resets the list to `['Composer']`.
+     */
+    public function excludeNamespaces(
+        string ...$namespaces,
+    ) : self {
 
-            if ( $item->getFilename()[0] === '.' ) {
-                continue;
-            }
+        $this->excludeNamespaces = empty( $namespaces )
+        ? ['Composer']
+        : $namespaces;
 
-            if ( $item->getExtension() === 'php' ) {
-                $found[] = $item;
-            }
-        }
+        return $this;
+    }
 
-        return $found;
+    /**
+     * Scan one or more directories relative to {@see $rootDirectory}.
+     *
+     * - Only `.php` files are considered; only the first `class` per file is read.
+     * - A trailing `*` marks a directory for recursive scanning, e.g. `src/*`.
+     * - Discovered classes must be loadable via the autoloader.
+     */
+    public function scanDirectories(
+        string ...$directories,
+    ) : ClassScan {
+        return $this->lastScan = new ClassScan(
+            \array_map(
+                fn( $directory ) => self::normalizePath(
+                    $this->rootDirectory,
+                    $directory,
+                ),
+                $directories,
+            ),
+            $this->excludeNamespaces,
+        );
+    }
+
+    /**
+     * Collapse mixed directory separators and return an absolute-style path.
+     *
+     * @internal
+     */
+    public static function normalizePath(
+        string|Stringable      $path,
+        null|string|Stringable $append = null,
+    ) : string {
+        $separator  = DIRECTORY_SEPARATOR;
+        $string     = $append ? "{$path}{$separator}{$append}" : "{$path}";
+        $normalized = \str_replace( ['\\', '/'], DIRECTORY_SEPARATOR, $string );
+        $fragments  = \array_filter(
+            \explode( DIRECTORY_SEPARATOR, $normalized ),
+            static fn( $value ) => $value !== '',
+        );
+
+        return DIRECTORY_SEPARATOR.\implode( DIRECTORY_SEPARATOR, $fragments );
     }
 }

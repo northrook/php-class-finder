@@ -1,5 +1,6 @@
 {
   "name": "northrook/php-class-finder",
+  "version": "0.5.0",
   "description": "Find fully qualified classes from files.",
   "type": "library",
   "license": "BSD-3-Clause",
@@ -12,19 +13,31 @@
   ],
   "autoload": {
     "psr-4": {
-      "Support\\": "src"
+      "Northrook\\": "src"
     }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Northrook\\Tests\\": "tests",
+      "Fixture\\": "tests/fixtures/classes",
+      "Composer\\Fixture\\": "tests/fixtures/classes/Composer"
+    },
+    "classmap": [
+      "tests/fixtures/classes/App/TwoClasses.php"
+    ]
   },
   "minimum-stability": "dev",
   "prefer-stable": true,
   "require": {
-    "php": ">=8.2"
+    "php": ">=8.4"
   },
   "require-dev": {
     "northrook/php-cs": "@dev",
-    "tracy/tracy": "^2.10"
+    "phpunit/phpunit": "^11.5",
+    "tracy/tracy": "@stable"
   },
   "scripts": {
-    "phpstan": "vendor/bin/phpstan analyse src"
+    "phpstan": "vendor/bin/phpstan analyse src",
+    "test": "phpunit"
   }
 }
