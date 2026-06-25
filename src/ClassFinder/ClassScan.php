@@ -172,7 +172,10 @@ final readonly class ClassScan implements Countable, IteratorAggregate
                 $namespace = \trim( \substr( $line, 10, -1 ) );
             }
 
-            if ( $this->lineContainsDefinition( $line, $basename ) ) {
+            if ( $this->lineContainsDefinition(
+                $line,
+                $basename,
+            ) ) {
                 break;
             }
         }
